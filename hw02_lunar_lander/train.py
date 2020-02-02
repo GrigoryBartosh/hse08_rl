@@ -27,7 +27,6 @@ LR = 0.0005
 
 MAX_STEPS_PER_EPISODE = 1000
 UPDATE_TARGET_TAU = 0.001
-EVAL_EPISODES = 10
 EVAL_EPISODES_CNT = 50
 
 MODEL_PATH = 'model.pth'
@@ -113,9 +112,9 @@ class AQL:
 
         self.q_foo.train()
 
-        q_target = torch.zeros(BATCH_SIZE).float()
         with torch.no_grad():
-            q_target[done] = self.q_foo_target(next_state).max(dim=1)[0][done]
+            q_target = self.q_foo_target(next_state).max(dim=1)[0]
+            q_target[done] = 0
         q_target = reward + q_target * GAMMA
 
         q = self.q_foo(state).gather(1, action[:, None]).squeeze()
@@ -150,11 +149,12 @@ if __name__ == '__main__':
 
     buffer = Buffer(BUFFER_CAPACITY)
 
-    best_total_reward = -10 ** 9
     epsilon = EPSILON_START
     step = 0
     episode = 0
+    all_rewards = []
     while True:
+        total_reward = 0
         state = env.reset()
         for _ in range(MAX_STEPS_PER_EPISODE):
             if np.random.rand() < epsilon:
@@ -164,6 +164,7 @@ if __name__ == '__main__':
 
             new_state, reward, done, _ = env.step(action)
             modified_reward = reward + (GAMMA * phi(new_state) - phi(state))
+            total_reward += reward
 
             buffer.add((state, action, modified_reward, new_state, done))
 
@@ -176,31 +177,14 @@ if __name__ == '__main__':
             if done:
                 break
 
-        if episode % EVAL_EPISODES == 0:
-            total_reward = 0
-            for _ in range(EVAL_EPISODES_CNT):
-                state = env.reset()
-                done = False
-                while not done:
-                    action = aql.act(state)
-                    state, reward, done, _ = env.step(action)
-                    total_reward += reward
+        aql.save(MODEL_PATH)
 
-            total_reward /= EVAL_EPISODES_CNT
+        all_rewards += [total_reward]
+        last_rewards = all_rewards[-EVAL_EPISODES_CNT:]
+        last_mean_reward = sum(last_rewards) / len(last_rewards)
 
-            if best_total_reward < total_reward:
-                best_total_reward = total_reward
-                aql.save(MODEL_PATH)
-
-            print('episode={}   eps={:.4}   reward={:.4}   best reward={:.4}'.format(
-                    episode, epsilon, total_reward, best_total_reward))
-
-            state = env.reset()
-            done = False
-            while not done:
-                action = aql.act(state)
-                state, _, done, _ = env.step(action)
-                env.render()
+        print('episode={}   eps={:.4}   reward={:.4}   mean reward={:.4}'.format(
+                episode, epsilon, total_reward, last_mean_reward))        
 
         epsilon = max(EPSILON_END, epsilon * EPSILON_DECAY)
         episode += 1

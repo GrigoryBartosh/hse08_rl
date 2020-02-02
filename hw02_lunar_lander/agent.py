@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     #total_reward /= EVAL_EPISODES_CNT
 
-    print(f'reward = {total_reward}')
+    #print(f'reward = {total_reward}')
 
     total_reward = 0
     state = env.reset()
